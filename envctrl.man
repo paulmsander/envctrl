@@ -1,0 +1,434 @@
+.TH envctrl 1
+
+.SH NAME
+
+envctrl \- Run a command in a controlled environment.
+
+.SH SYNOPSIS
+
+.P
+.B envctrl
+[\fB-c\fR]
+[\fB-C\fR]
+[\fB-d\fIdir\fR]
+[\fB-e\fIprofile\fR]
+[\fB-E\fIenvctrl-path\fR]
+[\fB-f\fIoptfile\fR]
+[\fB-g\fIgroup\fR]
+[\fB-H\fIhost\fR]
+[\fB-m\fIumask\fR]
+[\fB-n\fIname\fR]
+[\fB-u\fIuser\fR]
+[\fIcommand\fR]
+
+.SH DESCRIPTION
+
+.P
+The
+.B envctrl
+script invokes a shell
+.I command
+in a controlled environment.
+The environment is controlled by
+.I environment profiles
+that set up services prior to invoking the shell command, and tearing them
+down again afterwards.
+Environment profiles are Bourne Shell scripts, specified by the user, that
+are sourced by the
+.B envctrl
+script.
+
+.P
+Certain of the user's environment variables can also be stripped away from the
+environment in which the
+.I command
+runs.
+This is useful to prevent interactions that unknown environment variables may
+have on the command.
+Variables that are left alone are:
+DISPLAY, EDITOR, HOME, HZ, LOGNAME, MAIL, MAILCHECK, NNTPSERVER, OPTIND,
+PAGER, PPID, PRINTER, PWD, SHELL, TERM, TZ, USER, VISUAL, and ~ (tilde).
+(These variables may be unset by the environment profile itself, of
+course.)
+On Unix, the IFS, PATH, PS1, and PS2 environment variables are set with the
+following default values:
+
+.RS .5i
+IFS = space, tab, newline
+.br
+PATH = /usr/bin:/bin
+.br
+PS1 = $
+.br
+PS2 = >
+.br
+PS3 = #?
+.br
+PS4 = +
+.RE
+
+On Windows, the IFS, PATH, PS1, and PS2 environment variables are set with the
+following default values:
+
+.RS .5i
+IFS = space, tab, newline
+.br
+PATH = %ROOTDIR%/mksnt
+.br
+PS1 = $
+.br
+PS2 = >
+.br
+PS3 = #?
+.br
+PS4 = +
+.RE
+
+.P
+By default, the user can make
+.B envctrl
+program's presence known to the
+.I command
+by setting some well-known environment variables.
+This is useful if the user invokes a new command shell, and wishes to retain
+certain features of his usual environment (e.g. command aliases).
+For these settings, see the
+.B ENVIRONMENT
+section below.
+
+.P
+In addition to the environment profile, other aspects that the user can
+control about the
+.I command
+are:
+UID of the user as which the command runs (if the user is the super-user),
+primary GID of the process running the
+.I command
+(if the user is a member of that group or the super-user),
+the umask,
+and the host on which the command runs.
+
+.P
+When invoking the
+.I command
+on a remote host, the user
+(the user identified with the
+.BI -u user
+option, or the invoking user's identity if not the super-user)
+must be able to spawn a remote command using the Secure Shell program (ssh),
+without giving their password.
+
+.P
+Here is the order in which the
+.B envctrl
+script performs its tasks:
+
+.RS .5i
+.P
+Change user identity as specified.
+.br
+Invoke a remote shell if needed.
+.br
+Change primary group as specified.
+.br
+Clean the environment as directed.
+.br
+Set the present working directory as specified.
+.br
+Source the environment profile in setup mode.
+.br
+Set the umask as specified.
+.br
+Invoke the user's command or shell, as directed.
+.br
+Source the environment profile in teardown mode.
+.RE
+
+.P
+The environment profile is sourced three times:
+First to identify environment variables to preserve, then to set up the
+desired environment, and finally to tear it down.
+
+.P
+During the first (preserve) phase, the first command line argument ($1)
+is set to "preserve".
+The environment profile is invoked within a subprocess and is expected to
+list to its stdout stream the names of environment variables to preserve.
+Its exit status is ignored.
+
+.P
+During the setup phase, the first command line argument ($1) is set to
+"start".
+The environment profile may set environment variables, allocate resources,
+create configuration files, start servers, and so on.
+
+.P
+During the teardown phase, the first command line argument ($1) is set
+to "stop".
+The environment profile is expect to reverse the effects of the setup
+phase, such as stopping servers and freeing additional resources.
+
+.P
+Any profile that does more than set the values of environment variables
+must test its first command line argument and perform the expected tasks.
+Note that features added in the future may invoke the environment profile
+additional times with the first command line argument set to other values.
+The author of environment profiles should guard their code accordingly.
+
+.P
+Before the environment profile is sourced for the setup phase, a trap is
+set to source it for the teardown phase.
+The trap is invoked upon an exit of the
+.I command
+(or the
+.B envctrl
+script itself) and the HUP, INT, QUIT, and TERM signals.
+In the event that an environment profile encounters an error during the
+setup phase, it can perform a normal exit and it will again be sourced
+in the teardown protocol.
+
+.P
+Predefined configurations can be set up by writing most of the
+.B envctrl
+command line arguments into a file and referring to them by name.
+The configuration file is identified by the
+.BI -f optfile
+argument.
+The named configuration is identified by the
+.BI -n name
+argument.
+By default, the name of the configuration file is
+.B envctrl.dat
+and it's located either in the same directory as the
+.B envctrl
+program, or in a directory named
+.B lib
+that is a sibling of the directory containing the
+.B envctrl
+program.
+The host, group, umask, user, environment profile, working directory, and
+location of the envctrl program can all be specified by the file;
+the shell command, the name of the file itself, a configuration name, and
+.B -c
+and
+.B -C
+options cannot be set in the file.
+
+.P
+Each line of the configuration file has this format:
+
+.P
+.RS .5i
+.I name
+.I host
+.I group
+.I umask
+.I user
+.I environment
+.I directory
+.I envctrl
+.RE
+
+.P
+The
+.I name
+field contains the name of the predefined configuration.
+The
+.I host
+field contains the host on which the shell command runs.
+The
+.I group
+field contains the configuration's primary group.
+The
+.I umask
+field contains the configuration's umask.
+The
+.I user
+field contains the configuration's user ID.
+The
+.I environment
+field contains the fullpath to the configuration's environment profile.
+The
+.I directory
+field contains the fullpath to the working directory at the time the
+shell command is invoked.
+The
+.I envctrl
+field contains the location of the
+.B envctrl
+program itself on the host on which the shell command is invoked.
+
+.P
+Command line arguments override their counterparts in predefined
+configurations.
+Arguments omitted from the end of a line in the configuration file assume
+their default values.
+Default values for fields within the configuration file may be specified
+explicitly by placing a hyphen (-) in the field.
+In the event that more than one line in the
+.I optfile
+match the given
+.IR name ,
+the first match is used.
+Fields may be quoted with single- or double-quotes.
+
+
+.SH OPTIONS
+
+.IP -c .5i
+Clean the environment.
+That is, unset all environment variables except for a few well-known
+innocuous ones and those that are required for proper shell operations,
+and those preserved by the environment profile.
+
+.IP -C .5i
+Do not set the
+.B envctrl
+well-known environment variables.
+
+.IP [\fB-d\fIdir\fR]
+Specifies the present working directory in which the
+.I command
+executes.
+Note that, in combination with the
+.BI -H host
+option, this directory must exist on both the local and remote hosts.
+Defaults to the present working directory in which
+.B envctrl
+is invoked.
+
+.IP [\fB-e\fIprofile\fR]
+Specifies the environment profile in which the
+.I command
+is run.
+Default is to load no environment profile, inheriting the user's environment
+in which the
+.I command
+runs.
+
+.IP [\fB-E\fIenvctrl-path\fR]
+Specifies an alternate path to the
+.B envctrl
+program, to be used when spawning a command on a remote host with dissimilarly
+configured operating system from that of the local host.
+
+.IP [\fB-f\fIoptfile\fR]
+Specifies a file that contains predefined named configurations.
+This file is interpreted on the host on which the
+.B envctrl
+program is run.
+The default is named
+.B envctrl.dat
+in the same directory as the one containing the
+.B envctrl
+program, or in a directory named
+.B lib
+that is sibling to it.
+
+.IP [\fB-g\fIgroup\fR]
+The primary group of the process running the
+.IR command .
+Defaults to the user's primary group.
+
+.IP [\fB-H\fIhost\fR]
+Specifies the host on which the
+.I command
+is invoked.
+Defaults to the host invoking the
+.B envctrl
+script.
+
+.IP [\fB-m\fIumask\fR]
+The umask of the process running the
+.IR command .
+Defaults to the user's umask.
+
+.IP [\fB-n\fIname\fR]
+Identifies a predefined named configuration contained in the configuration
+file specified with the
+.BI -f optfile
+argument.
+
+.IP [\fB-u\fIuser\fR]
+The identity of the user to invoke the
+.IR command .
+The default is the user's identity.
+This option has effect only if the user is the super-user.
+
+.IP \fIcommand\fR
+The command to be invoked by the
+.B envctrl
+script.
+Defaults to the user's shell, or /bin/sh if it cannot be determined.
+
+
+.SH ENVIRONMENT
+
+.P
+The following environment variables are normally set by the
+.B envctrl
+program, but may be defeated by giving the
+.B -C
+option on the command line:
+
+.IP ENVCTRL_CMD .5i
+This is the
+.I command
+to be invoked as specified on the
+.B envctrl
+command line.
+.IP ENVCTRL_DIR .5i
+This is the directory in which the
+.I command
+is invoked.
+.IP ENVCTRL_PROFILE .5i
+This is the name of the environment profile specified on the
+command line.
+.IP ENVCTRL_RUNNING .5i
+This is set to "1" by the
+.B envctrl
+program.
+It is useful to test the existence of this variable in a .cshrc file
+to set up things like command aliases and history, without affecting
+other aspects of the profiled environment when a shell is invoked
+by the
+.B envctrl
+program.
+
+.SH BUGS
+
+.P
+The
+.B envctrl
+script relies on the
+.B envclean
+script to unset existing environment variables.
+A side-effect of the
+.B envclean
+script is that file descriptor 3 is redirected to the null device
+(/dev/null on Unix,
+NUL: on Windows).
+
+.SH SEE ALSO
+
+.P
+env(1)
+.br
+envclean(1)
+.br
+newgrp(1)
+.br
+remsh(1) or rsh(1)
+.br
+sh(1)
+.br
+su(1)
+.br
+umask(2)
+
+
+.SH AUTHOR
+
+.P
+This script was placed in the pubic domain by its author, Paul Sander
+(paul@wakawaka.com).

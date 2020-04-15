@@ -1,0 +1,110 @@
+.TH envclean 1
+
+.SH NAME
+
+.P
+envclean \- Clean the user's environment by unsetting environment variables.
+
+.SH SYNOPSIS
+
+.P
+[\fBset \fIvar\fR...]
+.br
+.B envclean
+
+.SH DESCRIPTION
+
+.P
+The
+.B envclean
+script is a Bourne Shell script that cleans the user's environment by
+unsetting most environment variables.
+A few are left alone that are widely accepted as being innocuous, or that
+are required for the proper operation of a shell.
+Additional variables specified in the "$@" array (the command line) are also
+left alone.
+
+.P
+The
+.B envclean
+script must be sourced by another Bourne Shell script, rather than being
+invoked as a command.
+This is because a script invoked as a command cannot affect the environment
+of its parent.
+
+.P
+The environment variables that are not affected by the
+.B envclean
+script are:
+DISPLAY,
+EDITOR,
+HOME,
+HZ,
+LOGNAME,
+MAIL,
+MAILCHECK,
+NNTPSERVER,
+OPTIND,
+PAGER,
+PRINTER,
+PWD,
+SHELL,
+TERM,
+TZ.
+
+.P
+In addition, the following environment variables are normally set to
+these values, but can be preserved:
+
+.RS .5i
+.P
+IFS = space, tap, newline
+.br
+PATH = /usr/bin:/bin
+.br
+PS1 = $
+.br
+PS2 = >
+.br
+PS3 = #?
+.br
+PS4 = +
+.RE
+
+.P
+The value of any environment variable (including the ones shown in the
+lists above) can be preserved by placing its name in the "$@" array before
+sourcing the
+.B envclean
+script.
+This is done in the Bourne Shell by invoking the "set" command and listing
+the names of the variables as arguments.
+
+.P
+In the event that the environment variables listed above are to be unset
+as well, the
+.B envctrl
+script should be used with an environment profile that unsets the unwanted
+variables.
+
+.SH BUGS
+
+.P
+The
+.B envclean
+script makes use of
+.B expr
+which writes to its standard output stream.
+To make such output disappear in a portable way, file descriptor 3 is
+redirected to the null device (/dev/null on Unix, NUL: on Windows).
+
+.SH SEE ALSO
+
+.P
+envctrl(1)
+
+.SH AUTHOR
+
+.P
+This script was placed in the public domain by its author, Paul Sander
+(paul@wakawaka.com).

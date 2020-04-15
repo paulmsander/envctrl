@@ -1,0 +1,598 @@
+#!/bin/sh
+
+# This script invokes the command given on the command line, using the
+# uid (if root), gid (if user is a member of the group), and umask on
+# the given host (if the uid has .rhost access to the remote host).
+
+# This script was placed in the public domain by its author, Paul Sander
+# (paul@wakawaka.com).
+
+# Identify platform, set platform-specific features.
+
+platform=`uname`
+if [ $? != 0 -o "x$platform" = "xWindows_NT" ]
+then
+	platform="Windows"
+	remsh="rsh"
+	nulldev="NUL:"
+	sep="\\"
+	qsep="\\\\"
+	msep="\\\\"
+else
+	remsh="ssh"
+	nulldev="/dev/null"
+	sep="/"
+	qsep="/"
+	msep="\\/"
+fi
+
+# Identify self
+
+me=`basename "$0"`
+here=`pwd`
+
+if expr "x$0" : "x${qsep}" > "$nulldev"
+then
+	mypath="$0"
+elif expr "x$0" : "x.*${qsep}" > "$nulldev"
+then
+	mypath="$here${sep}$0"
+else
+	for d in `echo "$PATH" | sed -e 's/:/ /g'`
+	do
+		if [ -f "$d${qsep}$0" -a -x "$d${qsep}$0" ]
+		then
+			mypath="$d${sep}$0"
+			break
+		fi
+	done
+	if [ "x$mypath" = "x" ]
+	then
+		mypath="$0"
+	fi
+fi
+
+# Save location of me
+
+mydir=`dirname "$mypath"`
+
+# Compute location of envclean script
+
+envclean="${mydir}${sep}envclean"
+
+# Compute location of envctrl.dat file
+
+envctrldat="${mydir}${sep}envctrl.dat"
+if [ ! -f "${envctrldat}" ]
+then
+	envctrldat=`dirname "${mydir}"`"${sep}lib${sep}envctrl.dat"
+	if [ ! -f "${envctrldat}" ]
+	then
+		envctrldat="${nulldev}"
+	fi
+fi
+
+# Compute defaults
+
+userinfo=`id`
+defhost=`hostname`
+defgroup=`expr "x$userinfo" : 'x[^ ]* gid=[0-9]*(\([^)]*\))'`
+defuser=`expr "x$userinfo" : 'xuid=[0-9]*(\([^)]*\))'`
+if [ "x$platform" = "xWindows" ]
+then
+	wingroup=`expr "x$defgroup" : 'x[^\]*\\\\\\(.*\)$'`
+	if [ $? = 0 ]
+	then
+		defgroup="$wingroup"
+	fi
+
+	winuser=`expr "x$defuser" : 'x[^\]*\\\\\\(.*\)$'`
+	if [ $? = 0 ]
+	then
+		defuser="$winuser"
+	fi
+fi
+defdir="$here"
+defumask=`umask`
+
+defcmd="$SHELL"
+if [ "x$defcmd" = "x" ]
+then
+	if [ "x${platform}" = "xWindows" ]
+	then
+		defcmd="cmd"
+	else
+		defcmd=`ypcat passwd 2> "$nulldev" | 
+		        grep "^${defuser}:" | head -1 | awk -F: '{ print $6}'`
+		if [ "x$defcmd" = "x" ]
+		then
+			defcmd=`grep "^${defuser}:" /etc/passwd | 
+			        head -1 | awk -F: '{ print $6}'`
+			if [ "x$defcmd" = "x" ]
+			then
+				defcmd="/bin/sh"
+			fi
+		fi
+	fi
+fi
+
+# Display usage message
+usage() {
+cat << EOF
+${me}: Usage:
+${me}: ${me} [-c] [-C] [-d dir] [-e profile] [-E ${me}-path] \\
+${me}:       [-f optfile] [-g group] [-H host] [-m umask] [-n name] \\
+${me}:       [-u user] [command]
+-c = clean the environment
+-C = do not set well-known ${me}-related environment variables
+-d dir = present working directory when invoking command
+         (default is $here)
+-e profile = environment profile (default is user's environment)
+-E envctrl-path = alternate path to the ${me} script on a remote host
+                  (default is $mypath)
+-f optfile = options file to supply parameters for named environments, requires
+             -n name option (default ${envctrldat})
+-g group = primary group to run command as (-u user must be in group)
+           (default $defgroup)
+-H host = host to run command on (default $defhost)
+-m umask = umask to run command with (default $defumask)
+-n name = name of named environment (no default)
+-u user = login ID of user to run command as (works only if invoked by root
+          or user matches uid) (default $defuser)
+command = command to invoke (default $defcmd)
+EOF
+}
+
+# Display debugging message
+
+dbmsg() {
+	echo "${me}.${defhost}.$$: $@" 1>&2
+}
+
+# This is for the MKS Korn shell, to make it perform case-sensitive case
+# switches.
+
+DUALCASE=1
+
+# Scan the command line
+
+clean=
+wkclean=
+dir=
+file=
+env=
+ectrlp=
+host=
+group=
+name=
+user=
+umask=
+debug=
+bad=0
+while getopts "cCd:e:E:f:hH:g:m:n:u:X" c
+do
+	case "$c" in
+	c)
+		clean="-c"
+		;;
+	C)
+		wkclean="-C"
+		;;
+	d)
+		dir="-d $OPTARG"
+		;;
+	e)
+		env="$OPTARG"
+		if [ ! -f "$env" -o ! -x "$env" ]
+		then
+			dbmsg "Environment profile $env is not executable"
+			bad=1
+		fi
+		env="-e $env"
+		;;
+	E)
+		ectrlp="-E $OPTARG"
+		;;
+	f)
+		file="$OPTARG"
+		if [ ! -f "$file" -o ! -r "$file" ]
+		then
+			dbmsg "Options file $file is not readable"
+			bad=1
+		fi
+		;;
+	h)
+		usage
+		exit 0
+		;;
+	H)
+		host="-H $OPTARG"
+		;;
+	g)
+		group="-g $OPTARG"
+		;;
+	m)
+		umask="-m $OPTARG"
+		;;
+	n)
+		name="$OPTARG"
+		;;
+	u)
+		user="-u $OPTARG"
+		;;
+	X)
+		debug="-X"
+		;;
+	esac
+done
+shift `expr $OPTIND - 1`
+
+# If -f is given, make sure -n is given also
+
+if [ "x${file}" != "x" -a "x${name}" = "x" ]
+then
+	dbmsg "The -n name option must be given with the -f optfile option"
+	bad=1
+fi
+
+# Early exit if bad arguments.
+
+if [ $bad != 0 ]
+then
+	usage 1>&2
+	exit 2
+fi
+
+# Retrieve remaining part of the command line as the command to invoke in
+# the controlled environment.  If nothing's there, use the default command.
+
+if [ $# -le 0 ]
+then
+	eval set $defcmd
+fi
+cmd=`for x in "$@";
+     do
+       echo "-- $x" |
+       sed -e 's/^...//' -e 's/[\"]/\\\&/g' -e 's/^/"/' -e 's/$/"/';
+     done`
+
+# Assume default -f option if none given
+
+if [ "x${file}" = "x" ]
+then
+	file="${envctrldat}"
+fi
+
+# Fetch default values from the optfile, if specified.
+# Format of the file:
+# name host group umask user environment directory envctrl
+# Fields omitted at the end of each line assume default values
+# Fields set to "-" assume default values
+# Fields can be overridden by command line arguments
+
+if [ "x$debug" != "x" ]
+then
+	dbmsg "Environment file = $file"
+	dbmsg "Environment name = $name"
+fi
+
+if [ "x${name}" != "x" ]
+then
+	name=`echo "$name" | sed -e 's/[.$^?\]/\\&/g'`
+	opts=`grep "^${name}[ 	]" "$file" | head -1`
+	if [ "x$debug" != "x" ]
+	then
+		dbmsg "opts = $opts"
+	fi
+	if [ "x$opts" != "x" ]
+	then
+		eval set $opts
+
+		shift
+		if [ $# -gt 0 ]
+		then
+			if [ "x$1" != "x-" ]
+			then
+				host="-H $1"
+			fi
+			shift
+		fi
+
+		if [ $# -gt 0 ]
+		then
+			if [ "x$1" != "x-" ]
+			then
+				group="-g $1"
+			fi
+			shift
+		fi
+
+		if [ $# -gt 0 ]
+		then
+			if [ "x$1" != "x-" ]
+			then
+				umask="-m $1"
+			fi
+			shift
+		fi
+
+		if [ $# -gt 0 ]
+		then
+			if [ "x$1" != "x-" ]
+			then
+				user="-u $1"
+			fi
+			shift
+		fi
+
+		if [ $# -gt 0 ]
+		then
+			if [ "x$1" != "x-" ]
+			then
+				env="-e \"$1\""
+			fi
+			shift
+		fi
+
+		if [ $# -gt 0 ]
+		then
+			if [ "x$1" != "x-" ]
+			then
+				dir="-d \"$1\""
+			fi
+			shift
+		fi
+
+		if [ $# -gt 0 ]
+		then
+			if [ "x$1" != "x-" ]
+			then
+				ectrlp="-E \"$1\""
+			fi
+			shift
+		fi
+	fi
+fi
+
+# Set built-in defaults if options were omitted from the command line and
+# no named environment is available.
+
+if [ "x$dir" = "x" ]
+then
+	dir="-d $defdir"
+fi
+
+if [ "x$env" = "x" ]
+then
+	:
+fi
+
+if [ "x$ectrlp" = "x" ]
+then
+	ectrlp="-E $mypath"
+fi
+
+if [ "x$host" = "x" ]
+then
+	host="-H $defhost"
+fi
+
+if [ "x$group" = "x" ]
+then
+	group="-g $defgroup"
+fi
+
+if [ "x$user" = "x" ]
+then
+	user="-u $defuser"
+fi
+
+if [ "x$umask" = "x" ]
+then
+	umask="-m $defumask"
+fi
+
+if [ "x$debug" != "x" ]
+then
+	dbmsg "mypath = $mypath"
+	dbmsg "clean = $clean"
+	dbmsg "wkclean = $wkclean"
+	dbmsg "dir = $dir"
+	dbmsg "env = $env"
+	dbmsg "host = $host"
+	dbmsg "group = $group"
+	dbmsg "umask = $umask"
+	dbmsg "user = $user"
+	dbmsg "cmd = $@"
+fi
+
+# Invoke the setuid part
+
+if [ "x$user" != "x-u $defuser" ]
+then
+	if [ "x$platform" = "xWindows" ]
+	then
+		dbmsg "The -u option has no effect on Windows platforms."
+		exit 2
+	fi
+
+	newuser=`expr "x$user" : 'x-u \(.*\)$'`
+	cmd=`for x in "$@"; do echo "-- $x" |
+	         sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"; done`
+	cmd=`echo "-- $cmd" | sed -e 's/^...//' -e 's/[\"\$]/\\\&/g'`
+	cmd="su $newuser -c \"$mypath $debug $clean $wkclean $dir $env $host $group $umask $cmd\""
+	if [ "x$debug" != "x" ]
+	then
+		dbmsg "$cmd"
+	fi
+	eval $cmd
+	exit $?
+fi
+
+# Invoke the remote shell
+
+if [ "x$host" != "x-H $defhost" ]
+then
+	newhost=`expr "x$host" : 'x-H \(.*\)$'`
+	newpath=`expr "x$ectrlp" : 'x-E \(.*\)$'`
+	if [ $? != 0 ]
+	then
+		# Workaround if expr emits characters when there's no match
+		newpath=
+	fi
+	cmd="$remsh $newhost \"$newpath\" $debug $clean $wkclean $dir $env $group $umask"
+	for x in "$@"
+	do
+		cmd="$cmd "`echo "-- $x" | sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
+	done
+
+	if [ "x$debug" != "x" ]
+	then
+		dbmsg "$cmd"
+	fi
+	exec $cmd
+	exit $?	# Just in case
+fi
+
+# Invoke the new group
+
+if [ "x$group" != "x-g $defgroup" ]
+then
+	if [ "x$platform" = "xWindows" ]
+	then
+		dbmsg "The -g option has no effect on Windows platforms."
+		exit 2
+	fi
+
+	newgroup=`expr "x$group" : 'x-g \(.*\)$'`
+	cmd=
+	for x in "$@"
+	do
+		cmd="$cmd "`echo "-- $x" | sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
+	done
+	cmd="newgrpcmd \"$newgroup\" -e $mypath $debug $clean $wkclean $dir $env $umask $cmd"
+
+	if [ "x$debug" != "x" ]
+	then
+		dbmsg "$cmd"
+	fi
+	eval $cmd
+	exit $?
+fi
+
+# Save the user's command and other stuff for spawned environment.
+
+ENVCTRL_CMD=
+for x in "$@"
+do
+	ENVCTRL_CMD="$ENVCTRL_CMD "`echo "-- $x" |
+	                          sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
+done
+
+ENVCTRL_PROFILE=`expr "x$env" : 'x-e \(.*\)$'`
+if [ $? != 0 ]
+then
+	# Workaround if expr emits characters when there's no match
+	ENVCTRL_PROFILE=
+fi
+ENVCTRL_UMASK=`expr "x$umask" : 'x-m \(.*\)$'`
+if [ $? != 0 ]
+then
+	# Workaround if expr emits characters when there's no match
+	ENVCTRL_UMASK=
+fi
+ENVCTRL_DEBUG="$debug"
+ENVCTRL_DIR=`expr "x$dir" : 'x-d \(.*\)$'`
+if [ $? != 0 ]
+then
+	# Workaround if expr emits characters when there's no match
+	ENVCTRL_DIR=
+fi
+
+# Clean the environment, if required
+
+if [ "x$clean" != "x" ]
+then
+	if [ "x$ENVCTRL_DEBUG" != "x" ]
+	then
+		dbmsg "Cleanenv environment"
+	fi
+	if [ "x$ENVCTRL_PROFILE" != "x" ]
+	then
+		preserve=`$ENVCTRL_PROFILE preserve`
+	else
+		preserve=
+	fi
+	eval "set -- $preserve ENVCTRL_CMD ENVCTRL_PROFILE ENVCTRL_UMASK \
+	             ENVCTRL_DEBUG ENVCTRL_DIR wkclean me defhost defdir"
+	. "$envclean"
+fi
+
+# Set the present working directory as specified by the user
+
+dir=`pwd`
+if [ "x$ENVCTRL_DIR" != "x$dir" ]
+then
+	if [ "x$ENVCTRL_DEBUG" != "x" ]
+	then
+		dbmsg "Setting pwd to $ENVCTRL_DIR"
+	fi
+	cd "$ENVCTRL_DIR"
+	if [ $? != 0 ]
+	then
+		echo "${me}: Unable to set present working directory to $ENVCTRL_DIR" 1>&2
+		exit 2
+	fi
+fi
+
+# Set up the environment profile to run upon exit, and then source it.
+
+if [ "x$ENVCTRL_PROFILE" != "x" ]
+then
+	trap "
+		if [ 'x$ENVCTRL_DEBUG' != 'x' ];
+		then
+			dbmsg 'Launching cleanup profile $ENVCTRL_PROFILE';
+		fi;
+		set stop;
+		. '$ENVCTRL_PROFILE'
+	" 0 1 2 3 15
+
+	if [ "x$ENVCTRL_DEBUG" != "x" ]
+	then
+		dbmsg "Launching setup profile $ENVCTRL_PROFILE"
+	fi
+	set start
+	. "$ENVCTRL_PROFILE"
+fi
+
+# Set envctrl environment variables, if required
+
+if [ "x$wkclean" = "x" ]
+then
+	ENVCTRL_RUNNING=1
+	export ENVCTRL_CMD ENVCTRL_PROFILE ENVCTRL_DIR ENVCTRL_RUNNING
+fi
+
+# Set umask
+
+if [ "x$ENVCTRL_DEBUG" != "x" ]
+then
+	dbmsg "Setting umask to $ENVCTRL_UMASK"
+fi
+umask "$ENVCTRL_UMASK"
+
+# Invoke the user's command
+
+if [ "x$ENVCTRL_DEBUG" != "x" ]
+then
+	dbmsg "$ENVCTRL_CMD"
+fi
+echo "Invoking the following command under envctrl:" 1>&2
+echo "$ENVCTRL_CMD" 1>&2
+echo "If this is a shell then you should exit the shell to exit the" 1>&2
+echo "environment profile." 1>&2
+eval "$ENVCTRL_CMD"
+st=$?
+echo "Exiting environment profile ($st)." 1>&2
+exit $st

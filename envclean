@@ -1,0 +1,144 @@
+#!/bin/sh
+
+# This Bourne Shell script is intended to be sourced by another shell script
+# unset unwanted environment variables.  Variables kept, and variables
+# set to initial values are listed below.  Variables passed in $@ (the
+# command line) are also retained.
+
+# Environment variables to retain:
+#	DISPLAY
+#	DATEMSK
+#	EDITOR
+#	HOME
+#	HZ
+#	LOGNAME
+#	MAIL
+#	MAILCHECK
+#	NNTPSERVER
+#	OPTIND
+#	PAGER
+#	PPID
+#	PRINTER
+#	PWD
+#	SHELL
+#	TERM
+#	TZ
+#	USER
+#	VISUAL
+#	_ (underscore)
+
+# Environment variables set to specific values:
+#	IFS = space tab newline
+#	PATH = /usr/bin:/bin
+#	PS1 = $ space
+#	PS2 = > space
+#	PS3 = #? space
+#	PS4 = + space
+
+# This script was placed in the public domain by its author, Paul Sander
+# (paul@wakawaka.com).
+
+# Add to command line the predefined list of okay variables, plus the
+# values of the initialized ones just in case they're passed in by the
+# user.  Also save the vars used locally.
+
+# The command line arguments are set as follows:
+
+# user-specified variables to preserve
+# // (delimiter)
+# variables known to have special meaning, preserved in first pass
+# -- (delimiter)
+# built-ins (and values) that are left initialized if not preserved
+# == (delimiter)
+# temps (and values) that are unset if not preserved
+
+set -- "$@" "//" "DATEMSK" "DISPLAY" "EDITOR" "HOME" "HZ" "LOGNAME" \
+	"MAIL" "MAILCHECK" "NNTPSERVER" "OPTIND" "PAGER" "PPID" "PRINTER" \
+	"PWD" "SHELL" "TERM" "TZ" "VISUAL" "USER" "_" \
+	"IFS" "PATH" "PS1" "PS2" "PS3" "PS4" "zz1" "zz2" "--" \
+	"IFS" "$IFS" "PATH" "$PATH" \
+	"PS1" "$PS1" "PS2" "$PS2" "PS3" "$PS3" "PS4" "$PS4" \
+	"==" "zz2" "$zz2" "zz1" "$zz1"
+
+# Initialize some special ones.
+
+zz1=`uname`
+if [ $? != 0 -o "x$zz1" = "xWindows_NT" ]
+then
+	PATH="$ROOTDIR/mksnt"
+	exec 3> NUL:
+else
+	PATH="/usr/bin:/bin"
+	exec 3> /dev/null
+fi
+
+# These shell variables are set by bash and cannot be unset.
+# Preserve them to prevent angry diagnostics.
+
+if expr "x$SHELL" : 'x.*/bash$' 1>&3
+then
+	set -- "BASH_ARGC" "BASH_ARGV" "BASH_LINENO" "BASH_SOURCE" \
+	"BASH_VERSINFO" "EUID" "SHELLOPTS" "UID" "$@"
+fi
+
+IFS=" 	
+"
+PS1="\$ "
+PS2="> "
+PS3="#? "
+PS4="+ "
+
+# Unset variables not listed on the command line before the "--".
+# Note that the temporary variables have been preserved above.
+# Also note that the sed script in the for loop is platform-dependent.
+
+zz1=`echo "$@" | head -n 1 | sed -e 's/--.*$//'`
+for zz2 in `set |
+	sed -e '/() *{$/,/^}$/d' |
+	fgrep "=" |
+	awk "-F=" '$1 ~ /^[A-Za-z0-9_][A-Za-z0-9_]*$/ { print $1; }' |
+	sort`
+do
+	if expr "x $zz1 " : "x.* $zz2 " 1>&3
+	then
+		# Preserve this
+		:
+	else
+		eval "unset $zz2 1>&3"
+	fi
+done
+
+# Restore the special built-in vars to their original values, if requested.
+
+while [ "x$1" != "x--" ]
+do
+	shift
+done
+shift
+while [ $# -gt 0 -a "x$1" != "x==" ]
+do
+	if expr "x $zz1 " : "x.* $1 [^/]*//" 1>&3
+	then
+		eval "$1=\"$2\""
+	fi
+	shift 2
+done
+
+# Restore the temporaries to their original values if requested, otherwise
+# unset.
+
+if [ "x$1" = "x==" ]
+then
+	shift
+	while [ $# -gt 0 ]
+	do
+		if expr "x $zz1 " : "x.* $1 [^/]*//" 1>&3
+		then
+			eval "$1=\""`echo "$2" | sed -e 's/["$\\]/\\\\&/g'`"\""
+		else
+			eval "unset $1"
+		fi
+		shift 2
+	done
+fi
+
