@@ -470,7 +470,8 @@ then
 	do
 		cmd="$cmd "`echo "-- $x" | sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
 	done
-	cmd="newgrpcmd \"$newgroup\" -e $mypath $debug $clean $wkclean $dir $env $umask $cmd"
+#	cmd="newgrpcmd \"$newgroup\" -e $mypath $debug $clean $wkclean $dir $env $umask $cmd"
+	cmd="sg \"$newgroup\" -c $mypath $debug $clean $wkclean $dir $env $umask $cmd"
 
 	if [ "x$debug" != "x" ]
 	then

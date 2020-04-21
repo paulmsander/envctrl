@@ -416,7 +416,7 @@ env(1)
 .br
 envclean(1)
 .br
-newgrp(1)
+sg(1)
 .br
 remsh(1) or rsh(1)
 .br
