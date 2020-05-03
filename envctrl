@@ -9,22 +9,11 @@
 
 # Identify platform, set platform-specific features.
 
-platform=`uname`
-if [ $? != 0 -o "x$platform" = "xWindows_NT" ]
-then
-	platform="Windows"
-	remsh="rsh"
-	nulldev="NUL:"
-	sep="\\"
-	qsep="\\\\"
-	msep="\\\\"
-else
-	remsh="ssh"
-	nulldev="/dev/null"
-	sep="/"
-	qsep="/"
-	msep="\\/"
-fi
+remsh="ssh"
+nulldev="/dev/null"
+sep="/"
+qsep="/"
+msep="\\/"
 
 # Identify self
 
@@ -78,40 +67,21 @@ userinfo=`id`
 defhost=`hostname`
 defgroup=`expr "x$userinfo" : 'x[^ ]* gid=[0-9]*(\([^)]*\))'`
 defuser=`expr "x$userinfo" : 'xuid=[0-9]*(\([^)]*\))'`
-if [ "x$platform" = "xWindows" ]
-then
-	wingroup=`expr "x$defgroup" : 'x[^\]*\\\\\\(.*\)$'`
-	if [ $? = 0 ]
-	then
-		defgroup="$wingroup"
-	fi
-
-	winuser=`expr "x$defuser" : 'x[^\]*\\\\\\(.*\)$'`
-	if [ $? = 0 ]
-	then
-		defuser="$winuser"
-	fi
-fi
 defdir="$here"
 defumask=`umask`
 
 defcmd="$SHELL"
 if [ "x$defcmd" = "x" ]
 then
-	if [ "x${platform}" = "xWindows" ]
+	defcmd=`ypcat passwd 2> "$nulldev" | 
+	        grep "^${defuser}:" | head -1 | awk -F: '{ print $6}'`
+	if [ "x$defcmd" = "x" ]
 	then
-		defcmd="cmd"
-	else
-		defcmd=`ypcat passwd 2> "$nulldev" | 
-		        grep "^${defuser}:" | head -1 | awk -F: '{ print $6}'`
+		defcmd=`grep "^${defuser}:" /etc/passwd | 
+		        head -1 | awk -F: '{ print $6}'`
 		if [ "x$defcmd" = "x" ]
 		then
-			defcmd=`grep "^${defuser}:" /etc/passwd | 
-			        head -1 | awk -F: '{ print $6}'`
-			if [ "x$defcmd" = "x" ]
-			then
-				defcmd="/bin/sh"
-			fi
+			defcmd="/bin/sh"
 		fi
 	fi
 fi
@@ -410,16 +380,12 @@ fi
 
 if [ "x$user" != "x-u $defuser" ]
 then
-	if [ "x$platform" = "xWindows" ]
-	then
-		dbmsg "The -u option has no effect on Windows platforms."
-		exit 2
-	fi
-
 	newuser=`expr "x$user" : 'x-u \(.*\)$'`
 	cmd=`for x in "$@"; do echo "-- $x" |
-	         sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"; done`
-	cmd=`echo "-- $cmd" | sed -e 's/^...//' -e 's/[\"\$]/\\\&/g'`
+	         sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/" |
+	         tr '\n' ' '; done`
+	cmd=`echo "-- $cmd" |
+	     sed -e 's/^...//' -e 's/[\"\$]/\\\&/g' -e 's/ \$//'`
 	cmd="su $newuser -c \"$mypath $debug $clean $wkclean $dir $env $host $group $umask $cmd\""
 	if [ "x$debug" != "x" ]
 	then
@@ -458,12 +424,6 @@ fi
 
 if [ "x$group" != "x-g $defgroup" ]
 then
-	if [ "x$platform" = "xWindows" ]
-	then
-		dbmsg "The -g option has no effect on Windows platforms."
-		exit 2
-	fi
-
 	newgroup=`expr "x$group" : 'x-g \(.*\)$'`
 	cmd=
 	for x in "$@"
@@ -471,6 +431,9 @@ then
 		cmd="$cmd "`echo "-- $x" | sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
 	done
 #	cmd="newgrpcmd \"$newgroup\" -e $mypath $debug $clean $wkclean $dir $env $umask $cmd"
+	echo "${me}: If you are asked for a password now, it is because the sg" 1>&2
+	echo "${me}: program wants to change to group $newgroup while logged" 1>&2
+	echo "${me}: in as user `whoami` on host `hostname`." 1>&2
 	cmd="sg \"$newgroup\" -c \"$mypath $debug $clean $wkclean $dir $env $umask $cmd\""
 
 	if [ "x$debug" != "x" ]
@@ -589,11 +552,11 @@ if [ "x$ENVCTRL_DEBUG" != "x" ]
 then
 	dbmsg "$ENVCTRL_CMD"
 fi
-echo "Invoking the following command under envctrl:" 1>&2
-echo "$ENVCTRL_CMD" 1>&2
-echo "If this is a shell then you should exit the shell to exit the" 1>&2
-echo "environment profile." 1>&2
+echo "${me}: Invoking the following command under envctrl:" 1>&2
+echo "${me}: $ENVCTRL_CMD" 1>&2
+echo "${me}: If this is a shell then you should exit the shell to exit the" 1>&2
+echo "${me}: environment profile." 1>&2
 eval "$ENVCTRL_CMD"
 st=$?
-echo "Exiting environment profile ($st)." 1>&2
+echo "${me}: Exiting environment profile ($st)." 1>&2
 exit $st

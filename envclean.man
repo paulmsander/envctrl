@@ -58,9 +58,9 @@ these values, but can be preserved:
 
 .RS .5i
 .P
-IFS = space, tap, newline
+IFS = space, tab, newline
 .br
-PATH = /usr/bin:/bin
+PATH = /usr/bin:/bin:/usr/local/bin
 .br
 PS1 = $
 .br
@@ -96,7 +96,7 @@ script makes use of
 .B expr
 which writes to its standard output stream.
 To make such output disappear in a portable way, file descriptor 3 is
-redirected to the null device (/dev/null on Unix, NUL: on Windows).
+redirected to the null device (/dev/null).
 
 .SH SEE ALSO
 

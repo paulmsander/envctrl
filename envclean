@@ -29,7 +29,7 @@
 
 # Environment variables set to specific values:
 #	IFS = space tab newline
-#	PATH = /usr/bin:/bin
+#	PATH = /usr/bin:/bin:/usr/local/bin
 #	PS1 = $ space
 #	PS2 = > space
 #	PS3 = #? space
@@ -62,15 +62,8 @@ set -- "$@" "//" "DATEMSK" "DISPLAY" "EDITOR" "HOME" "HZ" "LOGNAME" \
 
 # Initialize some special ones.
 
-zz1=`uname`
-if [ $? != 0 -o "x$zz1" = "xWindows_NT" ]
-then
-	PATH="$ROOTDIR/mksnt"
-	exec 3> NUL:
-else
-	PATH="/usr/bin:/bin"
-	exec 3> /dev/null
-fi
+PATH="/usr/bin:/bin:/usr/local/bin"
+exec 3> /dev/null
 
 # These shell variables are set by bash and cannot be unset.
 # Preserve them to prevent angry diagnostics.
@@ -78,7 +71,7 @@ fi
 if expr "x$SHELL" : 'x.*/bash$' 1>&3
 then
 	set -- "BASH_ARGC" "BASH_ARGV" "BASH_LINENO" "BASH_SOURCE" \
-	"BASH_VERSINFO" "EUID" "SHELLOPTS" "UID" "$@"
+	"BASH_VERSINFO" "EUID" "SHELLOPTS" "UID" "BASHOPTS" "$@"
 fi
 
 IFS=" 	

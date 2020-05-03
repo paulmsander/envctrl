@@ -50,30 +50,13 @@ DISPLAY, EDITOR, HOME, HZ, LOGNAME, MAIL, MAILCHECK, NNTPSERVER, OPTIND,
 PAGER, PPID, PRINTER, PWD, SHELL, TERM, TZ, USER, VISUAL, and ~ (tilde).
 (These variables may be unset by the environment profile itself, of
 course.)
-On Unix, the IFS, PATH, PS1, and PS2 environment variables are set with the
-following default values:
+On Unix, the IFS, PATH, PS1, PS2, PS3, and PS4 environment variables are
+set with the following default values:
 
 .RS .5i
 IFS = space, tab, newline
 .br
 PATH = /usr/bin:/bin
-.br
-PS1 = $
-.br
-PS2 = >
-.br
-PS3 = #?
-.br
-PS4 = +
-.RE
-
-On Windows, the IFS, PATH, PS1, and PS2 environment variables are set with the
-following default values:
-
-.RS .5i
-IFS = space, tab, newline
-.br
-PATH = %ROOTDIR%/mksnt
 .br
 PS1 = $
 .br
@@ -104,7 +87,10 @@ are:
 UID of the user as which the command runs (if the user is the super-user),
 primary GID of the process running the
 .I command
-(if the user is a member of that group or the super-user),
+(if the user is a member of that group or the super-user,
+and the
+.B sg(1)
+command is available),
 the umask,
 and the host on which the command runs.
 
@@ -165,7 +151,7 @@ create configuration files, start servers, and so on.
 .P
 During the teardown phase, the first command line argument ($1) is set
 to "stop".
-The environment profile is expect to reverse the effects of the setup
+The environment profile is expected to reverse the effects of the setup
 phase, such as stopping servers and freeing additional resources.
 
 .P
@@ -406,8 +392,20 @@ script to unset existing environment variables.
 A side-effect of the
 .B envclean
 script is that file descriptor 3 is redirected to the null device
-(/dev/null on Unix,
-NUL: on Windows).
+(/dev/null).
+
+.P
+The
+.BI -g group
+command line option works only if the
+.BR sg (1)
+program is available on the host running the
+.IR command .
+That program is part of the Linux shadow password package.
+The
+.BR newgrp (1)
+command has limitations that preclude its use by
+.BR envctrl .
 
 .SH SEE ALSO
 
@@ -418,7 +416,7 @@ envclean(1)
 .br
 sg(1)
 .br
-remsh(1) or rsh(1)
+ssh(1)
 .br
 sh(1)
 .br
