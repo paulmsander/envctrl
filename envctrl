@@ -223,7 +223,8 @@ fi
 cmd=`for x in "$@";
      do
        echo "-- $x" |
-       sed -e 's/^...//' -e 's/[\"]/\\\&/g' -e 's/^/"/' -e 's/$/"/';
+       sed -e 's/^...//' -e 's/[\"]/\\\&/g' -e 's/^/"/' -e 's/$/"/' |
+       tr '\n' ' ';
      done`
 
 # Assume default -f option if none given
@@ -308,7 +309,7 @@ then
 		then
 			if [ "x$1" != "x-" ]
 			then
-				dir="-d \"$1\""
+				dir="-d $1"
 			fi
 			shift
 		fi
@@ -373,7 +374,7 @@ then
 	dbmsg "group = $group"
 	dbmsg "umask = $umask"
 	dbmsg "user = $user"
-	dbmsg "cmd = $@"
+	dbmsg "cmd = $cmd"
 fi
 
 # Invoke the setuid part
@@ -447,6 +448,7 @@ fi
 # Save the user's command and other stuff for spawned environment.
 
 ENVCTRL_CMD=
+eval "set -- $cmd"
 for x in "$@"
 do
 	ENVCTRL_CMD="$ENVCTRL_CMD "`echo "-- $x" |
