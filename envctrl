@@ -20,6 +20,7 @@ msep="\\/"
 me=`basename "$0"`
 here=`pwd`
 
+mypath=
 if expr "x$0" : "x${qsep}" > "$nulldev"
 then
 	mypath="$0"
@@ -39,6 +40,11 @@ else
 	then
 		mypath="$0"
 	fi
+fi
+if [ "x$mypath" = "x" ]
+then
+	echo "$me: Cannot ascertain the fullpath of the $me program." 1>&2
+	exit 2
 fi
 
 # Save location of me
@@ -149,7 +155,7 @@ do
 		wkclean="-C"
 		;;
 	d)
-		dir="-d $OPTARG"
+		dir="-d '$OPTARG'"
 		;;
 	e)
 		env="$OPTARG"
@@ -158,10 +164,10 @@ do
 			dbmsg "Environment profile $env is not executable"
 			bad=1
 		fi
-		env="-e $env"
+		env="-e '$env'"
 		;;
 	E)
-		ectrlp="-E $OPTARG"
+		ectrlp="-E '$OPTARG'"
 		;;
 	f)
 		file="$OPTARG"
@@ -176,19 +182,19 @@ do
 		exit 0
 		;;
 	H)
-		host="-H $OPTARG"
+		host="-H '$OPTARG'"
 		;;
 	g)
-		group="-g $OPTARG"
+		group="-g '$OPTARG'"
 		;;
 	m)
-		umask="-m $OPTARG"
+		umask="-m '$OPTARG'"
 		;;
 	n)
 		name="$OPTARG"
 		;;
 	u)
-		user="-u $OPTARG"
+		user="-u '$OPTARG'"
 		;;
 	X)
 		debug="-X"
@@ -218,14 +224,15 @@ fi
 
 if [ $# -le 0 ]
 then
-	eval set $defcmd
+	eval set -- $defcmd
 fi
 cmd=`for x in "$@";
      do
        echo "-- $x" |
-       sed -e 's/^...//' -e 's/[\"]/\\\&/g' -e 's/^/"/' -e 's/$/"/' |
+       sed -e 's/^...//' -e "s/'/\"'\"/g" -e "s/^/'/" -e "s/$/'/" |
        tr '\n' ' ';
-     done`
+     done |
+     sed -e 's/ $//'`
 
 # Assume default -f option if none given
 
@@ -257,14 +264,14 @@ then
 	fi
 	if [ "x$opts" != "x" ]
 	then
-		eval set $opts
+		eval set -- $opts
 
 		shift
 		if [ $# -gt 0 ]
 		then
 			if [ "x$1" != "x-" ]
 			then
-				host="-H $1"
+				host="-H '$1'"
 			fi
 			shift
 		fi
@@ -273,7 +280,7 @@ then
 		then
 			if [ "x$1" != "x-" ]
 			then
-				group="-g $1"
+				group="-g '$1'"
 			fi
 			shift
 		fi
@@ -282,7 +289,7 @@ then
 		then
 			if [ "x$1" != "x-" ]
 			then
-				umask="-m $1"
+				umask="-m '$1'"
 			fi
 			shift
 		fi
@@ -291,7 +298,7 @@ then
 		then
 			if [ "x$1" != "x-" ]
 			then
-				user="-u $1"
+				user="-u '$1'"
 			fi
 			shift
 		fi
@@ -300,7 +307,7 @@ then
 		then
 			if [ "x$1" != "x-" ]
 			then
-				env="-e \"$1\""
+				env="-e '$1'"
 			fi
 			shift
 		fi
@@ -309,7 +316,7 @@ then
 		then
 			if [ "x$1" != "x-" ]
 			then
-				dir="-d $1"
+				dir="-d '$1'"
 			fi
 			shift
 		fi
@@ -318,7 +325,7 @@ then
 		then
 			if [ "x$1" != "x-" ]
 			then
-				ectrlp="-E \"$1\""
+				ectrlp="-E '$1'"
 			fi
 			shift
 		fi
@@ -330,7 +337,7 @@ fi
 
 if [ "x$dir" = "x" ]
 then
-	dir="-d $defdir"
+	dir="-d '$defdir'"
 fi
 
 if [ "x$env" = "x" ]
@@ -340,27 +347,27 @@ fi
 
 if [ "x$ectrlp" = "x" ]
 then
-	ectrlp="-E $mypath"
+	ectrlp="-E '$mypath'"
 fi
 
 if [ "x$host" = "x" ]
 then
-	host="-H $defhost"
+	host="-H '$defhost'"
 fi
 
 if [ "x$group" = "x" ]
 then
-	group="-g $defgroup"
+	group="-g '$defgroup'"
 fi
 
 if [ "x$user" = "x" ]
 then
-	user="-u $defuser"
+	user="-u '$defuser'"
 fi
 
 if [ "x$umask" = "x" ]
 then
-	umask="-m $defumask"
+	umask="-m '$defumask'"
 fi
 
 if [ "x$debug" != "x" ]
@@ -370,6 +377,8 @@ then
 	dbmsg "wkclean = $wkclean"
 	dbmsg "dir = $dir"
 	dbmsg "env = $env"
+	dbmsg "ectrlp = $ectrlp"
+	dbmsg "name = $name"
 	dbmsg "host = $host"
 	dbmsg "group = $group"
 	dbmsg "umask = $umask"
@@ -379,18 +388,13 @@ fi
 
 # Invoke the setuid part
 
-if [ "x$user" != "x-u $defuser" ]
+if [ "x$user" != "x-u '$defuser'" ]
 then
-	newuser=`expr "x$user" : 'x-u \(.*\)$'`
-	cmd=`for x in "$@"; do echo "-- $x" |
-	         sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/" |
-	         tr '\n' ' '; done`
-	cmd=`echo "-- $cmd" |
-	     sed -e 's/^...//' -e 's/[\"\$]/\\\&/g' -e 's/ \$//'`
+	newuser=`expr "x$user" : 'x-u .\(.*\).$'`
 	cmd="su $newuser -c \"$mypath $debug $clean $wkclean $dir $env $host $group $umask $cmd\""
 	if [ "x$debug" != "x" ]
 	then
-		dbmsg "$cmd"
+		dbmsg "Will run: $cmd"
 	fi
 	eval $cmd
 	exit $?
@@ -398,48 +402,37 @@ fi
 
 # Invoke the remote shell
 
-if [ "x$host" != "x-H $defhost" ]
+if [ "x$host" != "x-H '$defhost'" ]
 then
 	newhost=`expr "x$host" : 'x-H \(.*\)$'`
 	newpath=`expr "x$ectrlp" : 'x-E \(.*\)$'`
 	if [ $? != 0 ]
 	then
 		# Workaround if expr emits characters when there's no match
-		newpath=
+		newpath="$mypath"
 	fi
-	cmd="$remsh $newhost \"$newpath\" $debug $clean $wkclean $dir $env $group $umask"
-	for x in "$@"
-	do
-		cmd="$cmd "`echo "-- $x" | sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
-	done
-
+	cmd="$remsh $newhost $newpath $debug $clean $wkclean $dir $env $group $umask \"$cmd\""
 	if [ "x$debug" != "x" ]
 	then
-		dbmsg "$cmd"
+		dbmsg "Will run: $cmd"
 	fi
-	exec $cmd
-	exit $?	# Just in case
+	eval "$cmd"
+	exit $?
 fi
 
 # Invoke the new group
 
-if [ "x$group" != "x-g $defgroup" ]
+if [ "x$group" != "x-g '$defgroup'" ]
 then
 	newgroup=`expr "x$group" : 'x-g \(.*\)$'`
-	cmd=
-	for x in "$@"
-	do
-		cmd="$cmd "`echo "-- $x" | sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
-	done
-#	cmd="newgrpcmd \"$newgroup\" -e $mypath $debug $clean $wkclean $dir $env $umask $cmd"
 	echo "${me}: If you are asked for a password now, it is because the sg" 1>&2
 	echo "${me}: program wants to change to group $newgroup while logged" 1>&2
 	echo "${me}: in as user `whoami` on host `hostname`." 1>&2
-	cmd="sg \"$newgroup\" -c \"$mypath $debug $clean $wkclean $dir $env $umask $cmd\""
+	cmd="sg $newgroup -c \"$mypath $debug $clean $wkclean $dir $env $umask $cmd\""
 
 	if [ "x$debug" != "x" ]
 	then
-		dbmsg "$cmd"
+		dbmsg "Will run: $cmd"
 	fi
 	eval $cmd
 	exit $?
@@ -447,13 +440,7 @@ fi
 
 # Save the user's command and other stuff for spawned environment.
 
-ENVCTRL_CMD=
-eval "set -- $cmd"
-for x in "$@"
-do
-	ENVCTRL_CMD="$ENVCTRL_CMD "`echo "-- $x" |
-	                          sed -e 's/^...//' -e "s/'/'\"'\"'/g" -e "s/^/'/" -e "s/\$/'/"`
-done
+ENVCTRL_CMD="$cmd"
 
 ENVCTRL_PROFILE=`expr "x$env" : 'x-e \(.*\)$'`
 if [ $? != 0 ]
@@ -461,7 +448,7 @@ then
 	# Workaround if expr emits characters when there's no match
 	ENVCTRL_PROFILE=
 fi
-ENVCTRL_UMASK=`expr "x$umask" : 'x-m \(.*\)$'`
+ENVCTRL_UMASK=`expr "x$umask" : 'x-m .\(.*\).$'`
 if [ $? != 0 ]
 then
 	# Workaround if expr emits characters when there's no match
@@ -485,7 +472,11 @@ then
 	fi
 	if [ "x$ENVCTRL_PROFILE" != "x" ]
 	then
-		preserve=`$ENVCTRL_PROFILE preserve`
+#		if [ 'x$ENVCTRL_DEBUG' != 'x' ]
+#		then
+			dbmsg "Launching preserve profile $ENVCTRL_PROFILE"
+#		fi
+		preserve=`eval "$ENVCTRL_PROFILE preserve"`
 	else
 		preserve=
 	fi
@@ -496,14 +487,14 @@ fi
 
 # Set the present working directory as specified by the user
 
-dir=`pwd`
+dir="'"`pwd`"'"
 if [ "x$ENVCTRL_DIR" != "x$dir" ]
 then
 	if [ "x$ENVCTRL_DEBUG" != "x" ]
 	then
 		dbmsg "Setting pwd to $ENVCTRL_DIR"
 	fi
-	cd "$ENVCTRL_DIR"
+	eval "cd $ENVCTRL_DIR"
 	if [ $? != 0 ]
 	then
 		echo "${me}: Unable to set present working directory to $ENVCTRL_DIR" 1>&2
@@ -516,20 +507,20 @@ fi
 if [ "x$ENVCTRL_PROFILE" != "x" ]
 then
 	trap "
-		if [ 'x$ENVCTRL_DEBUG' != 'x' ];
-		then
+#		if [ 'x$ENVCTRL_DEBUG' != 'x' ];
+#		then
 			dbmsg 'Launching cleanup profile $ENVCTRL_PROFILE';
-		fi;
+#		fi;
 		set stop;
-		. '$ENVCTRL_PROFILE'
+		eval '. $ENVCTRL_PROFILE'
 	" 0 1 2 3 15
 
-	if [ "x$ENVCTRL_DEBUG" != "x" ]
-	then
+#	if [ "x$ENVCTRL_DEBUG" != "x" ]
+#	then
 		dbmsg "Launching setup profile $ENVCTRL_PROFILE"
-	fi
+#	fi
 	set start
-	. "$ENVCTRL_PROFILE"
+	eval ". $ENVCTRL_PROFILE"
 fi
 
 # Set envctrl environment variables, if required
@@ -546,19 +537,15 @@ if [ "x$ENVCTRL_DEBUG" != "x" ]
 then
 	dbmsg "Setting umask to $ENVCTRL_UMASK"
 fi
-umask "$ENVCTRL_UMASK"
+umask $ENVCTRL_UMASK
 
 # Invoke the user's command
 
-if [ "x$ENVCTRL_DEBUG" != "x" ]
-then
-	dbmsg "$ENVCTRL_CMD"
-fi
 echo "${me}: Invoking the following command under envctrl:" 1>&2
 echo "${me}: $ENVCTRL_CMD" 1>&2
 echo "${me}: If this is a shell then you should exit the shell to exit the" 1>&2
 echo "${me}: environment profile." 1>&2
-eval "$ENVCTRL_CMD"
+( eval "exec $ENVCTRL_CMD" )
 st=$?
 echo "${me}: Exiting environment profile ($st)." 1>&2
 exit $st
